@@ -8,6 +8,8 @@ import io
 import sys
 import time
 import grpc
+import types
+import platform
 from google.protobuf import json_format
 import sanity_pb2_grpc as pb2_grpc
 import sanity_pb2 as pb2
@@ -19,6 +21,9 @@ except ImportError:
 
 if sys.version_info[0] == 3:
     unicode = str
+
+
+openapi_warnings = []
 
 
 class Transport:
@@ -146,6 +151,29 @@ class HttpTransport(object):
                 return response
         else:
             raise Exception(response.status_code, yaml.safe_load(response.text))
+
+
+class Deprecator:
+    messages = {}
+
+    @classmethod
+    def deprecate(cls, key):
+        if cls.messages.get(key) is not None:
+            if cls.messages[key] in openapi_warnings:
+                return
+            openapi_warnings.append(cls.messages[key])
+
+    @staticmethod
+    def deprecated(func_or_data):
+        def inner(self, *args, **kwargs):
+            Deprecator.deprecate(
+                "{{}}.{{}}".format(type(self).__name__, func_or_data.__name__)
+            )
+            func_or_data(self, *args, **kwargs)
+
+        if isinstance(func_or_data, types.FunctionType):
+            return inner
+        Deprecator.deprecate(func_or_data)
 
 
 class OpenApiBase(object):
@@ -439,6 +467,7 @@ class OpenApiObject(OpenApiBase, OpenApiValidator):
                 if key in self._TYPES and "format" in self._TYPES[key] and self._TYPES[key]["format"] == "int64":
                     value = str(value)
                 output[key] = value
+                Deprecator.deprecate("{}.{}".format(type(self).__name__, key))
         return output
 
     def _decode(self, obj):
@@ -467,6 +496,7 @@ class OpenApiObject(OpenApiBase, OpenApiValidator):
                 if "format" in self._TYPES[property_name] and self._TYPES[property_name]["format"] == "int64":
                     property_value = int(property_value)
                 self._properties[property_name] = property_value
+                Deprecator.deprecate("{}.{}".format(type(self).__name__, property_name))
             self._validate_types(property_name, property_value)
         self._validate_required()
         return self
