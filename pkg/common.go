@@ -20,12 +20,23 @@ type grpcTransport struct {
 }
 
 type GrpcTransport interface {
+	// SetLocation set client connection to the given grpc target
 	SetLocation(value string) GrpcTransport
+	// Location get grpc target
 	Location() string
+	// SetRequestTimeout set timeout in grpc request
 	SetRequestTimeout(value time.Duration) GrpcTransport
+	// RequestTimeout get timeout in grpc request
 	RequestTimeout() time.Duration
+	// SetDialTimeout set timeout in grpc dial
 	SetDialTimeout(value time.Duration) GrpcTransport
+	// DialTimeout get timeout in grpc dial
 	DialTimeout() time.Duration
+	// SetClientConnection set grpc DialContext
+	// SetClientConnection and (SetLocation, SetDialTimeout) are mutually exclusive
+	SetClientConnection(con *grpc.ClientConn) GrpcTransport
+	// ClientConnection get grpc DialContext
+	ClientConnection() *grpc.ClientConn
 }
 
 // Location
@@ -55,6 +66,15 @@ func (obj *grpcTransport) DialTimeout() time.Duration {
 
 func (obj *grpcTransport) SetDialTimeout(value time.Duration) GrpcTransport {
 	obj.dialTimeout = value
+	return obj
+}
+
+func (obj *grpcTransport) ClientConnection() *grpc.ClientConn {
+	return obj.clientConnection
+}
+
+func (obj *grpcTransport) SetClientConnection(con *grpc.ClientConn) GrpcTransport {
+	obj.clientConnection = con
 	return obj
 }
 
@@ -103,6 +123,8 @@ type Api interface {
 	NewHttpTransport() HttpTransport
 	hasHttpTransport() bool
 	Close() error
+	GetApiWarnings() []string
+	ClearApiWarnings()
 }
 
 // NewGrpcTransport sets the underlying transport of the Api as grpc
@@ -140,6 +162,14 @@ func (api *api) hasHttpTransport() bool {
 	return api.http != nil
 }
 
+func (api *api) GetApiWarnings() []string {
+	return openapi_warnings
+}
+
+func (api *api) ClearApiWarnings() {
+	openapi_warnings = nil
+}
+
 // HttpRequestDoer will return True for HTTP transport
 type httpRequestDoer interface {
 	Do(req *http.Request) (*http.Response, error)
@@ -162,6 +192,12 @@ func validationResult() error {
 		return fmt.Errorf(errors)
 	}
 	return nil
+}
+
+var openapi_warnings []string
+
+func deprecated(message string) {
+	openapi_warnings = append(openapi_warnings, message)
 }
 
 func validateMac(mac string) error {
